@@ -1,4 +1,25 @@
-class agent(object):
+class Memorable():
+    """
+    internal type for horton that stores values of senses and beliefs.
+    This type allows for direct reforence to the past though a set of methods.
+    """
+    def __init__(self, val):
+        self.vals = [val]
+    def __cmp__(self, other):
+        if isInstance(other, Memorable):
+            return cmp(self.vals[-1], other[-1])
+        else:
+            return cmp(self.vals[-1], other)
+
+    def has_been(self, comparator):
+        return comparator in self.vals
+    def was(self, comparator):
+        return comparator in self.vals[:-1]
+
+
+
+
+class Agent(object):
     """
     represents the agency of a program in horton.
     i.e. Posessor of beliefs, desires and intentions.
@@ -13,7 +34,7 @@ class agent(object):
         self.effectors['quit'] = exit
         self.sense_cache = {}
         self.sensemap = {}
-        self.pre = {}
+        self.pre = []
 
     def cache(self):
         """
@@ -118,14 +139,14 @@ class before(object):
     def __call__(self, f):
         self.pre.append(f)
 
-
+# TODO: allow to set pre/before things to do for this sense.
 class sense(object):
     """ decorator for adding senses to to an agent """
     def __init__(self, agent, pre="all"):
         self.pre = pre
         self.senses = agent.senses
     def __call__(self, f):
-        self.senses[f.__name__] = {'action': f, 'preprocessing': pre}
+        self.senses[f.__name__] = f
 
 class effect(object):
     """ decorator for effecting the environment """
@@ -140,7 +161,7 @@ if __name__ == "__main__":
     example attemting to show how a simple 1D agent
     might find its way from one point to another.
     """
-    onede = agent() # make an agent
+    onede = Agent() # make an agent
 
     @before(onede)
     def establish_locations():
@@ -153,7 +174,7 @@ if __name__ == "__main__":
         return pre['food']
 
     @sense(onede)
-     def self_location(pre):
+    def self_location(pre):
         return pre['me']
 
     @effect(onede)
