@@ -7,15 +7,25 @@ class Memorable():
         self.vals = [val]
     def __cmp__(self, other):
         if isInstance(other, Memorable):
-            return cmp(self.vals[-1], other[-1])
+            return cmp(self.vals[-1], other.vals[-1])
         else:
             return cmp(self.vals[-1], other)
+    def __getitem__(self, key):
+        return self.vals[key]
+    def __setitem__(self, key, value):
+        self.vals[key] = value
+    def __iter__(self):
+        return iter(self.vals)
 
     def has_been(self, comparator):
         return comparator in self.vals
     def was(self, comparator):
         return comparator in self.vals[:-1]
-
+    def is(self, comparator):
+        if isInstance(other, Memorable):
+            return self.vals[-1] == other
+        else:
+            return self.vals[-1] == other
 
 
 
@@ -66,7 +76,7 @@ class Agent(object):
                 self.sensemap[sense] = req
 
     def trigger(self, asrt):
-        """ just run the belief. """
+        """ just run the belief. with its senses """
         return self.assertions[asrt]["action"](self.sense_cache)
 
 
@@ -141,7 +151,7 @@ class before(object):
 
 # TODO: allow to set pre/before things to do for this sense.
 class sense(object):
-    """ decorator for adding senses to to an agent """
+    """ decorator for adding senses to an agent """
     def __init__(self, agent, pre="all"):
         self.pre = pre
         self.senses = agent.senses
