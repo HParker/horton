@@ -3,13 +3,38 @@ class Memorable():
     internal type for horton that stores values of senses and beliefs.
     This type allows for direct reforence to the past though a set of methods.
     """
-    def __init__(self, val):
-        self.vals = [val]
-    def __cmp__(self, other):
-        if isInstance(other, Memorable):
-            return cmp(self.vals[-1], other.vals[-1])
+    def __init__(self, func):
+        self.func = func
+        self.vals = []
+    def __call__(self, info=None):
+        if info == None:
+            value = self.func()
         else:
-            return cmp(self.vals[-1], other)
+            value = self.func(info)
+        self.vals.append(value)
+        return value
+    def comp(self, item):
+        if type(item) is type(self):
+            return item.vals[-1]
+        else:
+            return item
+    def val(self):
+        return self.vals[-1]
+
+    # change behavior of cmparitors
+    def __eq__(self, other):
+        return self.val() == self.comp(other)
+    def __ne__(self, other):
+        return self.val() != self.comp(other)
+    def __lt__(self, other):
+        return self.val() < self.comp(other)
+    def __gt__(self, other):
+        return self.val() > self.comp(other)
+    def __le__(self, other):
+        return self.val() <= self.comp(other)
+    def __ge__(self, other):
+        return self.val() >= self.comp(other)
+
     def __getitem__(self, key):
         return self.vals[key]
     def __setitem__(self, key, value):
@@ -17,15 +42,16 @@ class Memorable():
     def __iter__(self):
         return iter(self.vals)
 
+    def same(self):
+        if len(self.vals) > 2:
+            return self.vals[-1] == self.vals[-2]
+        else:
+            return False
+
     def has_been(self, comparator):
         return comparator in self.vals
     def was(self, comparator):
         return comparator in self.vals[:-1]
-    def is(self, comparator):
-        if isInstance(other, Memorable):
-            return self.vals[-1] == other
-        else:
-            return self.vals[-1] == other
 
 
 
@@ -42,9 +68,15 @@ class Agent(object):
         self.senses = {}
         self.effectors = {}
         self.effectors['quit'] = exit
-        self.sense_cache = {}
+        # self.sense_cache = {}
         self.sensemap = {}
         self.pre = []
+
+    def before(self):
+        pre = dict()
+        for p in self.pre:
+            pre = dict(list(p().items()) + list(pre))
+        return pre
 
     def cache(self):
         """
@@ -52,19 +84,16 @@ class Agent(object):
         also return if the sense data is new or not,
         which avoids checking repeated values.
         """
-        pre = {}
-        for p in self.pre:
-            pre = dict(list(p().items()) + list(pre))
+        pre = self.before() # data needed before doing senses
+        new = []
+        for name, memory in self.senses.iteritems():
+            memory(pre)
+            if not memory.same():
+                new.append(name)
+        return new
 
-        prev = self.sense_cache
-        for name, func in self.senses.iteritems():
-            val = func(pre)
-            if val == prev.get(func.__name__, None):
-                self.sense_cache[name] = (False, val)
-            else:
-                self.sense_cache[name] = (True, val)
 
-    def index_senses(self):
+    def map_senses(self):
         """
         create a reverse index type table for senses -> beliefs.
         this makes it so when a sense changes, we know which beliefs might have changed as well.
@@ -77,27 +106,28 @@ class Agent(object):
 
     def trigger(self, asrt):
         """ just run the belief. with its senses """
-        return self.assertions[asrt]["action"](self.sense_cache)
+        return self.assertions[asrt]["action"](self.senses)
 
 
-    def start(self):
+    def __call__(self):
         """
         a loop over that caches sense data, keeps an updated set of beliefs based on that
         and uses the state of those beliefs to trigger requests.
         """
         # cache senses, recheck
         # if a value chages check the beliefs that rely on it.
-        self.index_senses()
+        self.map_senses()
         cur_beliefs = {}
         while True:
-            self.cache()
+            new = self.cache()
             effected_assertions = set()
-            for (sense_name, (is_new, val)) in self.sense_cache.iteritems():
-                if is_new:
-                    effected_assertions.update(self.sensemap[sense_name])
+            # find the assertions that might have a changed outcome
+            for sense in new:
+                effected_assertions.update(self.sensemap[sense])
+            # find the outcome of the changed assertions
             for asrt in effected_assertions:
                 cur_beliefs[asrt] = self.trigger(asrt)
-            # TODO: refactor... not clear code
+            print cur_beliefs
             for request, request_val in self.requests.iteritems(): # check requests
                 is_satisfied = True # Assume true until proved otherwise
                 for assertion, assertion_val in request_val['assertions'].iteritems(): # check that request's assertions
@@ -126,7 +156,7 @@ class assertion(object):
         self.assertions = agent.assertions
         self.senses = senses
     def __call__(self, f):
-        self.assertions[f.__name__] = {"action":f, "senses":self.senses}
+        self.assertions[f.__name__] = {"action":Memorable(f), "senses":self.senses}
 
 
 class request(object):
@@ -135,7 +165,7 @@ class request(object):
         self.requests = agent.requests
         self.assertions = assertions
     def __call__(self, f):
-        self.requests[f.__name__] = {"action":f, "assertions":self.assertions}
+        self.requests[f.__name__] = {"action":Memorable(f), "assertions":self.assertions}
 
 
 class before(object):
@@ -149,21 +179,20 @@ class before(object):
     def __call__(self, f):
         self.pre.append(f)
 
-# TODO: allow to set pre/before things to do for this sense.
 class sense(object):
     """ decorator for adding senses to an agent """
     def __init__(self, agent, pre="all"):
         self.pre = pre
         self.senses = agent.senses
     def __call__(self, f):
-        self.senses[f.__name__] = f
+        self.senses[f.__name__] = Memorable(f)
 
 class effect(object):
     """ decorator for effecting the environment """
     def __init__(self, agent):
         self.effectors = agent.effectors
     def __call__(self, f):
-        self.effectors[f.__name__] = f
+        self.effectors[f.__name__] = Memorable(f)
 
 
 if __name__ == "__main__":
@@ -177,7 +206,7 @@ if __name__ == "__main__":
     def establish_locations():
         with open("state.txt", "r") as f:
             s = f.read().split()
-            return {'me': s.pop(), 'food': s.pop(0)}
+            return {'me': int(s.pop()), 'food': int(s.pop(0))}
 
     @sense(onede)
     def food_location(pre):
@@ -201,6 +230,8 @@ if __name__ == "__main__":
 
     @assertion(onede, ["food_location", "self_location"]) # add a belief to the agent
     def food_forward(senses): # uses a cash of the sense data
+        print "comparing here gives:", senses['food_location'].val() > senses['self_location'].val()
+        print "returing:", senses["food_location"] > senses["self_location"]
         return senses["food_location"] > senses["self_location"]
 
 
@@ -212,6 +243,15 @@ if __name__ == "__main__":
     def move_forward_to_food(effectors):
         effectors['move_forward']()
         print "moving forward towards the food"
+
+    @assertion(onede, ['self_location'])
+    def was_twelve(senses):
+        return senses['self_location'].was(12)
+
+    @request(onede, {'was_twelve': True})
+    def tell_me_it_is_twelve(effectors):
+        print "I was twelve!"
+
 
     @request(onede, {'food_forward': False, 'at_food': False})
     def move_backward_to_food(effectors):
@@ -233,4 +273,4 @@ if __name__ == "__main__":
     print "requests--------------"
     print onede.requests
 
-    onede.start()
+    onede()
